@@ -93,7 +93,7 @@ cron.schedule("* * * * *", async () => {
     console.log(`🔍 Mengecek deadline untuk tanggal: ${today}`);
 
     const dueTasks = await db.any(
-      "SELECT nama_kegiatan, deadline, email_tujuan, subject FROM deadlines WHERE deadline = $1",
+      "SELECT nama_kegiatan, deadline, email_tujuan, subject, body FROM deadlines WHERE deadline = $1",
       [today]
     );
 
