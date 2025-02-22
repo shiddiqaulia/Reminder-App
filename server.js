@@ -55,61 +55,61 @@ app.get("/api/deadlines", async (req, res) => {
 });
 
 // Fungsi untuk mengirim email
-const sendEmail = async (emailList, namaKegiatan, deadline) => {
-    let transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      debug: true,  // Menampilkan log debug
-      logger: true, // Menampilkan log proses SMTP
-    });
+// const sendEmail = async (emailList, namaKegiatan, deadline) => {
+//     let transporter = nodemailer.createTransport({
+//       service: "gmail",
+//       auth: {
+//         user: process.env.EMAIL_USER,
+//         pass: process.env.EMAIL_PASS,
+//       },
+//       debug: true,  // Menampilkan log debug
+//       logger: true, // Menampilkan log proses SMTP
+//     });
   
-    let mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: emailList,
-      subject: "Reminder Deadline!",
-      text: `Halo, ini pengingat bahwa deadline untuk "${namaKegiatan}" jatuh pada ${deadline}. Jangan lupa untuk menyelesaikannya!`,
-    };
+//     let mailOptions = {
+//       from: process.env.EMAIL_USER,
+//       to: emailList,
+//       subject: "Reminder Deadline!",
+//       text: `Halo, ini pengingat bahwa deadline untuk "${namaKegiatan}" jatuh pada ${deadline}. Jangan lupa untuk menyelesaikannya!`,
+//     };
   
-    try {
-      let info = await transporter.sendMail(mailOptions);
-      console.log(`📩 Email terkirim ke: ${emailList}`);
-      console.log(`✉️ Response: ${info.response}`);
-    } catch (error) {
-      console.error("❌ Gagal mengirim email:", error);
-    }
-  };
+//     try {
+//       let info = await transporter.sendMail(mailOptions);
+//       console.log(`📩 Email terkirim ke: ${emailList}`);
+//       console.log(`✉️ Response: ${info.response}`);
+//     } catch (error) {
+//       console.error("❌ Gagal mengirim email:", error);
+//     }
+//   };
   
 
 
-cron.schedule("* * * * *", async () => {
-  try {
-    // Ambil tanggal sekarang dalam format YYYY-MM-DD sesuai Asia/Bangkok
-    const today = moment().tz("Asia/Bangkok").format("YYYY-MM-DD");
-    console.log(`🔍 Mengecek deadline untuk tanggal: ${today}`);
+// cron.schedule("* * * * *", async () => {
+//   try {
+//     // Ambil tanggal sekarang dalam format YYYY-MM-DD sesuai Asia/Bangkok
+//     const today = moment().tz("Asia/Bangkok").format("YYYY-MM-DD");
+//     console.log(`🔍 Mengecek deadline untuk tanggal: ${today}`);
 
-    // Mencari deadline yang jatuh pada tanggal tersebut
-    const dueTasks = await db.any(
-      "SELECT nama_kegiatan, deadline, email_tujuan FROM deadlines WHERE deadline = $1",
-      [today]
-    );
+//     // Mencari deadline yang jatuh pada tanggal tersebut
+//     const dueTasks = await db.any(
+//       "SELECT nama_kegiatan, deadline, email_tujuan FROM deadlines WHERE deadline = $1",
+//       [today]
+//     );
 
-    if (dueTasks.length === 0) {
-      console.log("📭 Tidak ada email yang dikirim hari ini.");
-      return;
-    }
+//     if (dueTasks.length === 0) {
+//       console.log("📭 Tidak ada email yang dikirim hari ini.");
+//       return;
+//     }
 
-    for (let task of dueTasks) {
-      await sendEmail(task.email_tujuan, task.nama_kegiatan, task.deadline);
-    }
+//     for (let task of dueTasks) {
+//       await sendEmail(task.email_tujuan, task.nama_kegiatan, task.deadline);
+//     }
 
-    console.log(`📩 ${dueTasks.length} email peringatan telah dikirim!`);
-  } catch (error) {
-    console.error("❌ Gagal mengirim email:", error.message);
-  }
-});
+//     console.log(`📩 ${dueTasks.length} email peringatan telah dikirim!`);
+//   } catch (error) {
+//     console.error("❌ Gagal mengirim email:", error.message);
+//   }
+// });
 
 // Start Server
 app.listen(PORT, () => {
