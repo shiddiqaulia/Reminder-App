@@ -34,7 +34,7 @@ app.post("/api/deadlines", async (req, res) => {
     console.log(`📝 Menyimpan deadline: ${formattedDeadline}`);
 
     await db.none(
-      "INSERT INTO deadlines (nama_kegiatan, deadline, email_tujuan) VALUES ($1, $2, $3)",
+      "INSERT INTO deadlines (nama_kegiatan, deadline, email_tujuan, is_sent) VALUES ($1, $2, $3, FALSE)",
       [nama_kegiatan, formattedDeadline, JSON.stringify(email_tujuan)]
     );
 
@@ -62,8 +62,6 @@ const sendEmail = async (emailList, namaKegiatan, deadline) => {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
-    debug: true, // Menampilkan log debug
-    logger: true, // Menampilkan log proses SMTP
   });
 
   let mailOptions = {
@@ -76,22 +74,23 @@ const sendEmail = async (emailList, namaKegiatan, deadline) => {
   try {
     let info = await transporter.sendMail(mailOptions);
     console.log(`📩 Email terkirim ke: ${emailList}`);
-    console.log(`✉️ Response: ${info.response}`);
+    return true;
   } catch (error) {
     console.error("❌ Gagal mengirim email:", error);
+    return false;
   }
 };
 
-// Cron job untuk mengecek dan mengirim email peringatan setiap menit
+// Cron job untuk mengirim email **sekali saja**
 cron.schedule("* * * * *", async () => {
   try {
     // Ambil tanggal sekarang dalam format YYYY-MM-DD sesuai Asia/Bangkok
     const today = moment().tz("Asia/Bangkok").format("YYYY-MM-DD");
     console.log(`🔍 Mengecek deadline untuk tanggal: ${today}`);
 
-    // Mencari deadline yang jatuh pada tanggal tersebut
+    // Mencari deadline yang jatuh pada tanggal tersebut dan belum dikirim
     const dueTasks = await db.any(
-      "SELECT nama_kegiatan, deadline, email_tujuan FROM deadlines WHERE deadline = $1",
+      "SELECT id, nama_kegiatan, deadline, email_tujuan FROM deadlines WHERE deadline = $1 AND is_sent = FALSE",
       [today]
     );
 
@@ -101,7 +100,10 @@ cron.schedule("* * * * *", async () => {
     }
 
     for (let task of dueTasks) {
-      await sendEmail(task.email_tujuan, task.nama_kegiatan, task.deadline);
+      let emailSent = await sendEmail(task.email_tujuan, task.nama_kegiatan, task.deadline);
+      if (emailSent) {
+        await db.none("UPDATE deadlines SET is_sent = TRUE WHERE id = $1", [task.id]);
+      }
     }
 
     console.log(`📩 ${dueTasks.length} email peringatan telah dikirim!`);
