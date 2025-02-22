@@ -35,7 +35,7 @@ app.post("/api/deadlines", async (req, res) => {
 
     await db.none(
       "INSERT INTO deadlines (nama_kegiatan, deadline, email_tujuan) VALUES ($1, $2, $3)",
-      [nama_kegiatan, formattedDeadline, email_tujuan]
+      [nama_kegiatan, formattedDeadline, JSON.stringify(email_tujuan)]
     );
 
     res.json({ success: true, message: "Deadline berhasil ditambahkan!" });
