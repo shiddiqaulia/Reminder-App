@@ -21,21 +21,27 @@ const db = pgp({
   database: process.env.PG_DATABASE,
   password: process.env.PG_PASSWORD,
   port: process.env.PG_PORT,
-  ssl: { rejectUnauthorized: false }, // Tambahkan ini agar bisa konek ke Railway
+  ssl: { rejectUnauthorized: false }, // Railway SSL
 });
 
 // Endpoint: Menambahkan deadline baru
 app.post("/api/deadlines", async (req, res) => {
   try {
-    const { nama_kegiatan, deadline, email_tujuan } = req.body;
+    const { nama_kegiatan, deadline, email_tujuan, subject, body } = req.body;
+
+    // Pastikan subject dan body tidak kosong
+    if (!subject || !body) {
+      return res.status(400).json({ success: false, message: "Subject dan body tidak boleh kosong!" });
+    }
 
     // Konversi tanggal ke format YYYY-MM-DD dengan timezone Asia/Bangkok
     const formattedDeadline = moment(deadline).tz("Asia/Bangkok").format("YYYY-MM-DD");
+
     console.log(`📝 Menyimpan deadline: ${formattedDeadline}`);
 
     await db.none(
-      "INSERT INTO deadlines (nama_kegiatan, deadline, email_tujuan, is_sent) VALUES ($1, $2, $3, FALSE)",
-      [nama_kegiatan, formattedDeadline, JSON.stringify(email_tujuan)]
+      "INSERT INTO deadlines (nama_kegiatan, deadline, email_tujuan, subject, body, is_sent) VALUES ($1, $2, $3, $4, $5, FALSE)",
+      [nama_kegiatan, formattedDeadline, JSON.stringify(email_tujuan), subject, body]
     );
 
     res.json({ success: true, message: "Deadline berhasil ditambahkan!" });
@@ -55,7 +61,7 @@ app.get("/api/deadlines", async (req, res) => {
 });
 
 // Fungsi untuk mengirim email
-const sendEmail = async (emailList, namaKegiatan, deadline) => {
+const sendEmail = async (emailList, subject, body) => {
   let transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
@@ -67,8 +73,8 @@ const sendEmail = async (emailList, namaKegiatan, deadline) => {
   let mailOptions = {
     from: process.env.EMAIL_USER,
     to: emailList,
-    subject: "Reminder Deadline!",
-    text: `Halo, ini pengingat bahwa deadline untuk "${namaKegiatan}" jatuh pada ${deadline}. Jangan lupa untuk menyelesaikannya!`,
+    subject: subject, // Gunakan subject dari database
+    text: body, // Gunakan body dari database
   };
 
   try {
@@ -81,7 +87,7 @@ const sendEmail = async (emailList, namaKegiatan, deadline) => {
   }
 };
 
-// Cron job untuk mengirim email **sekali saja**
+// Cron job untuk mengirim email sekali saja
 cron.schedule("* * * * *", async () => {
   try {
     // Ambil tanggal sekarang dalam format YYYY-MM-DD sesuai Asia/Bangkok
@@ -90,7 +96,7 @@ cron.schedule("* * * * *", async () => {
 
     // Mencari deadline yang jatuh pada tanggal tersebut dan belum dikirim
     const dueTasks = await db.any(
-      "SELECT id, nama_kegiatan, deadline, email_tujuan FROM deadlines WHERE deadline = $1 AND is_sent = FALSE",
+      "SELECT id, nama_kegiatan, deadline, email_tujuan, subject, body FROM deadlines WHERE deadline = $1 AND is_sent = FALSE",
       [today]
     );
 
@@ -100,7 +106,7 @@ cron.schedule("* * * * *", async () => {
     }
 
     for (let task of dueTasks) {
-      let emailSent = await sendEmail(task.email_tujuan, task.nama_kegiatan, task.deadline);
+      let emailSent = await sendEmail(task.email_tujuan, task.subject, task.body);
       if (emailSent) {
         await db.none("UPDATE deadlines SET is_sent = TRUE WHERE id = $1", [task.id]);
       }
