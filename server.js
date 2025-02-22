@@ -27,15 +27,15 @@ const db = pgp({
 // Endpoint: Menambahkan deadline baru
 app.post("/api/deadlines", async (req, res) => {
   try {
-    const { nama_kegiatan, deadline, email_tujuan, subject } = req.body;
+    const { nama_kegiatan, deadline, email_tujuan, subject, body } = req.body;
 
     // Konversi tanggal ke format YYYY-MM-DD dengan timezone Asia/Bangkok
     const formattedDeadline = moment(deadline).tz("Asia/Bangkok").format("YYYY-MM-DD");
     console.log(`📝 Menyimpan deadline: ${formattedDeadline}`);
 
     await db.none(
-      "INSERT INTO deadlines (nama_kegiatan, deadline, email_tujuan, subject) VALUES ($1, $2, $3, $4)",
-      [nama_kegiatan, formattedDeadline, JSON.stringify(email_tujuan), subject]
+      "INSERT INTO deadlines (nama_kegiatan, deadline, email_tujuan, subject, body) VALUES ($1, $2, $3, $4, $5)",
+      [nama_kegiatan, formattedDeadline, JSON.stringify(email_tujuan), subject, body]
     );
 
     res.json({ success: true, message: "Deadline berhasil ditambahkan!" });
@@ -43,6 +43,7 @@ app.post("/api/deadlines", async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
 
 
 // Endpoint: Mendapatkan semua deadline
@@ -56,7 +57,7 @@ app.get("/api/deadlines", async (req, res) => {
 });
 
 // Fungsi untuk mengirim email
-const sendEmail = async (emailList, namaKegiatan, deadline, subject) => {
+const sendEmail = async (emailList, namaKegiatan, deadline, subject, body) => {
   let transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -71,7 +72,7 @@ const sendEmail = async (emailList, namaKegiatan, deadline, subject) => {
       from: process.env.EMAIL_USER,
       to: emailList,
       subject: subject, // Gunakan subject dari aplikasi
-      text: `Halo, ini pengingat bahwa deadline untuk "${namaKegiatan}" jatuh pada ${deadline}. Jangan lupa untuk menyelesaikannya!`,
+      text: body
   };
 
   try {
@@ -102,7 +103,7 @@ cron.schedule("* * * * *", async () => {
     }
 
     for (let task of dueTasks) {
-      await sendEmail(task.email_tujuan, task.nama_kegiatan, task.deadline, task.subject);
+      await sendEmail(task.email_tujuan, task.nama_kegiatan, task.deadline, task.subject, task.body);
     }
 
     console.log(`📩 ${dueTasks.length} email peringatan telah dikirim!`);
