@@ -21,6 +21,7 @@ const db = pgp({
   database: process.env.PG_DATABASE,
   password: process.env.PG_PASSWORD,
   port: process.env.PG_PORT,
+  ssl: { rejectUnauthorized: false }, // Tambahkan ini agar bisa konek ke Railway
 });
 
 // Endpoint: Menambahkan deadline baru
@@ -69,7 +70,7 @@ const sendEmail = async (emailList, namaKegiatan, deadline) => {
       from: process.env.EMAIL_USER,
       to: emailList,
       subject: "Reminder Deadline!",
-      text: `Halo, ini pengingat bahwa deadline untuk "${namaKegiatan}" jatuh pada ${deadline}. ANJAY BISA`,
+      text: `Halo, ini pengingat bahwa deadline untuk "${namaKegiatan}" jatuh pada ${deadline}. Jangan lupa untuk menyelesaikannya!`,
     };
   
     try {
