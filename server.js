@@ -1,104 +1,115 @@
+require("dotenv").config();
 const express = require("express");
+const cors = require("cors");
 const bodyParser = require("body-parser");
 const pgp = require("pg-promise")();
-const cors = require("cors");
-const schedule = require("node-schedule");
+const cron = require("node-cron");
 const nodemailer = require("nodemailer");
 const moment = require("moment-timezone");
 
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
 
-// Koneksi ke database PostgreSQL
+// Koneksi ke Database PostgreSQL
 const db = pgp({
   user: process.env.PG_USER,
   host: process.env.PG_HOST,
   database: process.env.PG_DATABASE,
   password: process.env.PG_PASSWORD,
   port: process.env.PG_PORT,
-  ssl: { rejectUnauthorized: false }, // Tambahkan ini agar bisa konek ke Railway
+  ssl: { rejectUnauthorized: false }, // Agar bisa konek ke Railway
 });
 
-// Konfigurasi Nodemailer
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: "your-email@gmail.com",
-    pass: "your-email-password",
-  },
-});
-
-// Fungsi untuk mengirim email
-const sendEmail = async (emailList, namaKegiatan, deadline, subject, body) => {
-  try {
-    const mailOptions = {
-      from: "your-email@gmail.com",
-      to: emailList.join(","),
-      subject: subject || `Reminder: ${namaKegiatan}`,
-      text: `Pengingat untuk kegiatan: ${namaKegiatan}\n\nDeadline: ${deadline}\n\n${body}`,
-    };
-
-    await transporter.sendMail(mailOptions);
-    console.log(`📩 Email berhasil dikirim ke: ${emailList.join(", ")}`);
-  } catch (error) {
-    console.error("❌ Gagal mengirim email:", error.message);
-  }
-};
-
-// Endpoint: Menambahkan deadline dan menjadwalkan email
+// Endpoint: Menambahkan deadline baru
 app.post("/api/deadlines", async (req, res) => {
   try {
     const { nama_kegiatan, deadline, email_tujuan, subject, body } = req.body;
+
+    // Konversi tanggal ke format YYYY-MM-DD dengan timezone Asia/Bangkok
     const formattedDeadline = moment(deadline).tz("Asia/Bangkok").format("YYYY-MM-DD");
+    console.log(`📝 Menyimpan deadline: ${formattedDeadline}`);
 
     await db.none(
-      "INSERT INTO deadlines (nama_kegiatan, deadline, email_tujuan, subject, body, is_sent) VALUES ($1, $2, $3, $4, $5, $6)",
-      [nama_kegiatan, formattedDeadline, JSON.stringify(email_tujuan), subject, body, false]
+      "INSERT INTO deadlines (nama_kegiatan, deadline, email_tujuan, subject, body) VALUES ($1, $2, $3, $4, $5)",
+      [nama_kegiatan, formattedDeadline, JSON.stringify(email_tujuan), subject, body]
     );
 
-    console.log(`📌 Deadline ditambahkan untuk ${formattedDeadline}`);
-
-    scheduleEmail(formattedDeadline, email_tujuan, nama_kegiatan, subject, body);
-
-    res.json({ success: true, message: "Deadline berhasil ditambahkan dan dijadwalkan!" });
+    res.json({ success: true, message: "Deadline berhasil ditambahkan!" });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Fungsi untuk menjadwalkan email pada tanggal deadline
-const scheduleEmail = (date, emailList, namaKegiatan, subject, body) => {
-  const sendDate = moment(date).tz("Asia/Bangkok").toDate();
+// Endpoint: Mendapatkan semua deadline
+app.get("/api/deadlines", async (req, res) => {
+  try {
+    const deadlines = await db.any("SELECT * FROM deadlines");
+    res.json({ success: true, data: deadlines });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
-  schedule.scheduleJob(sendDate, async () => {
-    try {
-      const checkSent = await db.oneOrNone(
-        "SELECT is_sent FROM deadlines WHERE deadline = $1 AND is_sent = false",
-        [date]
-      );
-
-      if (!checkSent) {
-        console.log(`⏩ Email untuk ${namaKegiatan} sudah pernah dikirim. Tidak mengirim ulang.`);
-        return;
-      }
-
-      await sendEmail(emailList, namaKegiatan, date, subject, body);
-      await db.none("UPDATE deadlines SET is_sent = true WHERE deadline = $1", [date]);
-
-      console.log(`📩 Email untuk ${namaKegiatan} telah dikirim!`);
-    } catch (error) {
-      console.error("❌ Gagal mengirim email:", error.message);
-    }
+// Fungsi untuk mengirim email
+const sendEmail = async (emailList, namaKegiatan, deadline, subject, body) => {
+  let transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+    debug: true,
+    logger: true,
   });
 
-  console.log(`⏳ Email untuk ${namaKegiatan} dijadwalkan pada ${sendDate}`);
+  let mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: emailList,
+    subject: subject || `Reminder: ${namaKegiatan}`,
+    text: body,
+  };
+
+  try {
+    let info = await transporter.sendMail(mailOptions);
+    console.log(`📩 Email terkirim ke: ${emailList.join(", ")}`);
+    console.log(`✉️ Response: ${info.response}`);
+  } catch (error) {
+    console.error("❌ Gagal mengirim email:", error.message);
+  }
 };
 
-// Jalankan server
-app.listen(port, () => {
-  console.log(`🚀 Server berjalan di http://localhost:${port}`);
+// Cron job untuk mengirim email pada deadline
+cron.schedule("* * * * *", async () => {
+  try {
+    const today = moment().tz("Asia/Bangkok").format("YYYY-MM-DD");
+    console.log(`🔍 Mengecek deadline untuk tanggal: ${today}`);
+
+    const dueTasks = await db.any(
+      "SELECT nama_kegiatan, deadline, email_tujuan, subject, body FROM deadlines WHERE deadline = $1",
+      [today]
+    );
+
+    if (dueTasks.length === 0) {
+      console.log("📭 Tidak ada email yang dikirim hari ini.");
+      return;
+    }
+
+    for (let task of dueTasks) {
+      const emailList = JSON.parse(task.email_tujuan);
+      await sendEmail(emailList, task.nama_kegiatan, task.deadline, task.subject, task.body);
+    }
+
+    console.log(`📩 ${dueTasks.length} email peringatan telah dikirim!`);
+  } catch (error) {
+    console.error("❌ Gagal mengirim email:", error.message);
+  }
+});
+
+// Start Server
+app.listen(PORT, () => {
+  console.log(`✅ Server berjalan di port ${PORT}`);
 });
