@@ -21,21 +21,21 @@ const db = pgp({
   database: process.env.PG_DATABASE,
   password: process.env.PG_PASSWORD,
   port: process.env.PG_PORT,
-  ssl: { rejectUnauthorized: false }, // Agar bisa konek ke Railway
+  ssl: { rejectUnauthorized: false }, // Tambahkan ini agar bisa konek ke Railway
 });
 
 // Endpoint: Menambahkan deadline baru
 app.post("/api/deadlines", async (req, res) => {
   try {
-    const { nama_kegiatan, deadline, email_tujuan, subject, body } = req.body;
+    const { nama_kegiatan, deadline, email_tujuan } = req.body;
 
     // Konversi tanggal ke format YYYY-MM-DD dengan timezone Asia/Bangkok
     const formattedDeadline = moment(deadline).tz("Asia/Bangkok").format("YYYY-MM-DD");
     console.log(`📝 Menyimpan deadline: ${formattedDeadline}`);
 
     await db.none(
-      "INSERT INTO deadlines (nama_kegiatan, deadline, email_tujuan, subject, body) VALUES ($1, $2, $3, $4, $5)",
-      [nama_kegiatan, formattedDeadline, JSON.stringify(email_tujuan), subject, body]
+      "INSERT INTO deadlines (nama_kegiatan, deadline, email_tujuan) VALUES ($1, $2, $3)",
+      [nama_kegiatan, formattedDeadline, JSON.stringify(email_tujuan)]
     );
 
     res.json({ success: true, message: "Deadline berhasil ditambahkan!" });
@@ -55,41 +55,43 @@ app.get("/api/deadlines", async (req, res) => {
 });
 
 // Fungsi untuk mengirim email
-const sendEmail = async (emailList, namaKegiatan, deadline, subject, body) => {
+const sendEmail = async (emailList, namaKegiatan, deadline) => {
   let transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
-    debug: true,
-    logger: true,
+    debug: true, // Menampilkan log debug
+    logger: true, // Menampilkan log proses SMTP
   });
 
   let mailOptions = {
     from: process.env.EMAIL_USER,
     to: emailList,
-    subject: subject || `Reminder: ${namaKegiatan}`,
-    text: body,
+    subject: "Reminder Deadline!",
+    text: `Halo, ini pengingat bahwa deadline untuk "${namaKegiatan}" jatuh pada ${deadline}. Jangan lupa untuk menyelesaikannya!`,
   };
 
   try {
     let info = await transporter.sendMail(mailOptions);
-    console.log(`📩 Email terkirim ke: ${emailList.join(", ")}`);
+    console.log(`📩 Email terkirim ke: ${emailList}`);
     console.log(`✉️ Response: ${info.response}`);
   } catch (error) {
-    console.error("❌ Gagal mengirim email:", error.message);
+    console.error("❌ Gagal mengirim email:", error);
   }
 };
 
-// Cron job untuk mengirim email pada deadline
+// Cron job untuk mengecek dan mengirim email peringatan setiap menit
 cron.schedule("* * * * *", async () => {
   try {
+    // Ambil tanggal sekarang dalam format YYYY-MM-DD sesuai Asia/Bangkok
     const today = moment().tz("Asia/Bangkok").format("YYYY-MM-DD");
     console.log(`🔍 Mengecek deadline untuk tanggal: ${today}`);
 
+    // Mencari deadline yang jatuh pada tanggal tersebut
     const dueTasks = await db.any(
-      "SELECT nama_kegiatan, deadline, email_tujuan, subject, body FROM deadlines WHERE deadline = $1",
+      "SELECT nama_kegiatan, deadline, email_tujuan FROM deadlines WHERE deadline = $1",
       [today]
     );
 
@@ -99,8 +101,7 @@ cron.schedule("* * * * *", async () => {
     }
 
     for (let task of dueTasks) {
-      const emailList = JSON.parse(task.email_tujuan);
-      await sendEmail(emailList, task.nama_kegiatan, task.deadline, task.subject, task.body);
+      await sendEmail(task.email_tujuan, task.nama_kegiatan, task.deadline);
     }
 
     console.log(`📩 ${dueTasks.length} email peringatan telah dikirim!`);
