@@ -60,6 +60,28 @@ app.get("/api/deadlines", async (req, res) => {
   }
 });
 
+// Endpoint: Menghapus deadline berdasarkan ID
+app.delete("/api/deadlines/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Periksa apakah ID yang dimasukkan ada dalam database
+    const deadline = await db.oneOrNone("SELECT * FROM deadlines WHERE id = $1", [id]);
+
+    if (!deadline) {
+      return res.status(404).json({ success: false, message: "Deadline tidak ditemukan!" });
+    }
+
+    // Hapus deadline berdasarkan ID
+    await db.none("DELETE FROM deadlines WHERE id = $1", [id]);
+
+    res.json({ success: true, message: "Deadline berhasil dihapus!" });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
 // Fungsi untuk mengirim email
 const sendEmail = async (emailList, subject, body) => {
   let transporter = nodemailer.createTransport({
