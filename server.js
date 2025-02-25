@@ -81,6 +81,38 @@ app.delete("/api/deadlines/:id", async (req, res) => {
   }
 });
 
+// Endpoint: Memperbarui deadline berdasarkan ID
+app.put("/api/deadlines/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nama_kegiatan, deadline, email_tujuan, subject, body } = req.body;
+
+    // Pastikan semua data yang diperlukan ada
+    if (!nama_kegiatan || !deadline || !subject || !body) {
+      return res.status(400).json({ success: false, message: "Semua field harus diisi!" });
+    }
+
+    // Cek apakah deadline dengan ID tersebut ada di database
+    const existingDeadline = await db.oneOrNone("SELECT * FROM deadlines WHERE id = $1", [id]);
+
+    if (!existingDeadline) {
+      return res.status(404).json({ success: false, message: "Deadline tidak ditemukan!" });
+    }
+
+    // Konversi tanggal ke format yang sesuai
+    const formattedDeadline = moment(deadline).tz("Asia/Bangkok").format("YYYY-MM-DD");
+
+    // Lakukan update pada database
+    await db.none(
+      "UPDATE deadlines SET nama_kegiatan = $1, deadline = $2, email_tujuan = $3, subject = $4, body = $5 WHERE id = $6",
+      [nama_kegiatan, formattedDeadline, JSON.stringify(email_tujuan), subject, body, id]
+    );
+
+    res.json({ success: true, message: "Deadline berhasil diperbarui!" });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // Fungsi untuk mengirim email
 const sendEmail = async (emailList, subject, body) => {
