@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
-
+  
 // Koneksi ke Database PostgreSQL
 const db = pgp({
   user: process.env.PG_USER,
